@@ -57,6 +57,7 @@ public class FirstPersonController : MonoBehaviour
     [SerializeField] private bool lockCursorOnStart = true;
 
     private CharacterController controller;
+    private PlayerStamina stamina; // Opcional: si no existe, se puede correr sin límite.
 
     private float jumpBufferCounter;
 
@@ -74,6 +75,7 @@ public class FirstPersonController : MonoBehaviour
     private void Awake()
     {
         controller = GetComponent<CharacterController>();
+        stamina = GetComponent<PlayerStamina>();
 
         if (cameraTransform == null)
         {
@@ -179,8 +181,15 @@ public class FirstPersonController : MonoBehaviour
         if (wishDirection.sqrMagnitude > 1f)
             wishDirection.Normalize();
 
-        bool sprintHeld = Input.GetKey(sprintKey);
-        float speed = sprintHeld ? sprintSpeed : walkSpeed;
+        // Solo cuenta como correr si el jugador se mueve y le queda estamina.
+        bool sprinting = Input.GetKey(sprintKey) && move != Vector2.zero;
+        if (stamina != null)
+        {
+            sprinting &= stamina.CanSprint;
+            stamina.Tick(sprinting, Time.deltaTime);
+        }
+
+        float speed = sprinting ? sprintSpeed : walkSpeed;
         Vector3 targetVelocity = wishDirection * speed;
 
         horizontalVelocity = Vector3.MoveTowards(

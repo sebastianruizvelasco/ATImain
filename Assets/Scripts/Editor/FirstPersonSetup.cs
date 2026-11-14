@@ -5,7 +5,7 @@ using UnityEngine.SceneManagement;
 
 /// <summary>
 /// Asistente de editor para montar un jugador en primera persona en la escena actual:
-/// CharacterController + FirstPersonController y una cámara hija.
+/// CharacterController + FirstPersonController + estamina y una cámara hija.
 /// El controlador usa el Input Manager antiguo, por lo que no hace falta PlayerInput.
 /// </summary>
 public static class FirstPersonSetup
@@ -101,6 +101,10 @@ public static class FirstPersonSetup
             cameraProperty.objectReferenceValue = camera.transform;
             controllerSerialized.ApplyModifiedPropertiesWithoutUndo();
         }
+
+        // --- Estamina y polvo al agotarse ---
+        player.AddComponent<PlayerStamina>();
+        player.AddComponent<StaminaDustEffect>();
 
         // --- Suelo y obstáculos de prueba ---
         EnsureGround();
