@@ -104,7 +104,7 @@ public static class FirstPersonSetup
 
         // --- Estamina y polvo al agotarse ---
         player.AddComponent<PlayerStamina>();
-        player.AddComponent<StaminaDustEffect>();
+        player.AddComponent<StaminaBloodEffect>();
 
         // --- Suelo y obstáculos de prueba ---
         EnsureGround();
