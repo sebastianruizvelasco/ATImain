@@ -1,10 +1,9 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
 
 /// <summary>
 /// Controlador en primera persona basado en CharacterController.
-/// Lee las acciones "Move", "Look", "Jump" y "Sprint" del asset
-/// InputSystem_Actions a través del componente PlayerInput.
+/// Usa el Input Manager antiguo (Edit > Project Settings > Input Manager):
+/// ejes "Horizontal", "Vertical", "Mouse X", "Mouse Y" y botón "Jump".
 /// </summary>
 [AddComponentMenu("Primera Persona/First Person Controller")]
 [RequireComponent(typeof(CharacterController))]
@@ -36,12 +35,13 @@ public class FirstPersonController : MonoBehaviour
     [Tooltip("Tiempo durante el que se recuerda un salto pulsado antes de tocar el suelo (s).")]
     [SerializeField, Min(0f)] private float jumpBufferTime = 0.1f;
 
+    [Header("Entrada")]
+    [Tooltip("Tecla para correr.")]
+    [SerializeField] private KeyCode sprintKey = KeyCode.LeftShift;
+
     [Header("Vista")]
     [Tooltip("Sensibilidad del ratón (grados por píxel).")]
     [SerializeField, Min(0.001f)] private float mouseSensitivity = 0.12f;
-
-    [Tooltip("Sensibilidad del mando (grados por segundo).")]
-    [SerializeField, Min(0.001f)] private float gamepadSensitivity = 150f;
 
     [Tooltip("Invertir el eje vertical de la vista.")]
     [SerializeField] private bool invertY;
@@ -57,16 +57,7 @@ public class FirstPersonController : MonoBehaviour
     [SerializeField] private bool lockCursorOnStart = true;
 
     private CharacterController controller;
-    private PlayerInput playerInput;
 
-    private InputAction moveAction;
-    private InputAction lookAction;
-    private InputAction jumpAction;
-    private InputAction sprintAction;
-
-    private Vector2 moveInput;
-    private Vector2 lookInput;
-    private bool sprintHeld;
     private float jumpBufferCounter;
 
     private Vector3 horizontalVelocity;
@@ -83,7 +74,6 @@ public class FirstPersonController : MonoBehaviour
     private void Awake()
     {
         controller = GetComponent<CharacterController>();
-        playerInput = GetComponent<PlayerInput>();
 
         if (cameraTransform == null)
         {
@@ -96,13 +86,6 @@ public class FirstPersonController : MonoBehaviour
         {
             Debug.LogError(
                 "FirstPersonController: no se encontró ninguna cámara. Añade una cámara como hija del jugador o asigna 'Camera Transform'.",
-                this);
-        }
-
-        if (playerInput == null)
-        {
-            Debug.LogWarning(
-                "FirstPersonController: falta el componente PlayerInput. Añádelo al jugador, asigna InputSystem_Actions y deja 'Player' como mapa por defecto.",
                 this);
         }
 
@@ -141,13 +124,13 @@ public class FirstPersonController : MonoBehaviour
         if (!lockCursorOnStart)
             return;
 
-        if (cursorLocked && Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
+        if (cursorLocked && Input.GetKeyDown(KeyCode.Escape))
         {
             SetCursorLocked(false);
             return;
         }
 
-        if (!cursorLocked && Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
+        if (!cursorLocked && Input.GetMouseButtonDown(0))
             SetCursorLocked(true);
     }
 
@@ -160,29 +143,19 @@ public class FirstPersonController : MonoBehaviour
 
     private void ApplyLook()
     {
-        if (lookInput.sqrMagnitude < 0.0001f)
+        // Con el cursor liberado no se gira la vista.
+        if (lockCursorOnStart && !cursorLocked)
             return;
 
-        bool usingGamepad = playerInput != null && playerInput.currentControlScheme == "Gamepad";
+        // GetAxisRaw devuelve el desplazamiento del ratón en píxeles desde el último frame.
+        float lookX = Input.GetAxisRaw("Mouse X");
+        float lookY = Input.GetAxisRaw("Mouse Y");
 
-        float yawDelta;
-        float pitchDelta;
+        if (Mathf.Approximately(lookX, 0f) && Mathf.Approximately(lookY, 0f))
+            return;
 
-        if (usingGamepad)
-        {
-            // En mando el valor es un eje continuo: se aplica por segundo.
-            if (lookInput.sqrMagnitude < 0.01f)
-                return;
-
-            yawDelta = lookInput.x * gamepadSensitivity * Time.deltaTime;
-            pitchDelta = lookInput.y * gamepadSensitivity * Time.deltaTime;
-        }
-        else
-        {
-            // En ratón el valor es el desplazamiento en píxeles desde el último frame.
-            yawDelta = lookInput.x * mouseSensitivity;
-            pitchDelta = lookInput.y * mouseSensitivity;
-        }
+        float yawDelta = lookX * mouseSensitivity;
+        float pitchDelta = lookY * mouseSensitivity;
 
         yaw += yawDelta;
         pitch += invertY ? pitchDelta : -pitchDelta;
@@ -198,14 +171,15 @@ public class FirstPersonController : MonoBehaviour
     {
         bool grounded = controller.isGrounded;
 
-        Vector2 move = moveInput;
-        if (move.sqrMagnitude < 0.01f) // Zona muerta para el stick.
+        Vector2 move = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
+        if (move.sqrMagnitude < 0.01f) // Zona muerta.
             move = Vector2.zero;
 
         Vector3 wishDirection = transform.right * move.x + transform.forward * move.y;
         if (wishDirection.sqrMagnitude > 1f)
             wishDirection.Normalize();
 
+        bool sprintHeld = Input.GetKey(sprintKey);
         float speed = sprintHeld ? sprintSpeed : walkSpeed;
         Vector3 targetVelocity = wishDirection * speed;
 
@@ -223,7 +197,10 @@ public class FirstPersonController : MonoBehaviour
             coyoteCounter -= Time.deltaTime;
         }
 
-        jumpBufferCounter -= Time.deltaTime;
+        if (Input.GetButtonDown("Jump"))
+            jumpBufferCounter = jumpBufferTime;
+        else
+            jumpBufferCounter -= Time.deltaTime;
 
         if (jumpBufferCounter > 0f && coyoteCounter > 0f)
         {
@@ -236,28 +213,5 @@ public class FirstPersonController : MonoBehaviour
 
         Vector3 motion = horizontalVelocity + Vector3.up * verticalVelocity;
         controller.Move(motion * Time.deltaTime);
-    }
-
-    // --- Callbacks de PlayerInput (Send Messages) ---
-
-    private void OnMove(InputValue value)
-    {
-        moveInput = value.Get<Vector2>();
-    }
-
-    private void OnLook(InputValue value)
-    {
-        lookInput = value.Get<Vector2>();
-    }
-
-    private void OnJump(InputValue value)
-    {
-        if (value.isPressed)
-            jumpBufferCounter = jumpBufferTime;
-    }
-
-    private void OnSprint(InputValue value)
-    {
-        sprintHeld = value.isPressed;
     }
 }
