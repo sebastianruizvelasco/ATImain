@@ -1,75 +1,49 @@
+
 using UnityEngine;
 
-/// <summary>
-/// Controlador en primera persona basado en CharacterController.
-/// Usa el Input Manager antiguo (Edit > Project Settings > Input Manager):
-/// ejes "Horizontal", "Vertical", "Mouse X", "Mouse Y" y botón "Jump".
-/// </summary>
 [AddComponentMenu("Primera Persona/First Person Controller")]
 [RequireComponent(typeof(CharacterController))]
 public class FirstPersonController : MonoBehaviour
 {
     [Header("Cámara")]
-    [Tooltip("Transform que gira en vertical (normalmente la cámara hija). Si se deja vacío se busca una cámara en los hijos.")]
     [SerializeField] private Transform cameraTransform;
 
     [Header("Movimiento")]
-    [Tooltip("Velocidad al caminar (m/s).")]
     [SerializeField, Min(0f)] private float walkSpeed = 4.5f;
-
-    [Tooltip("Velocidad al correr (m/s).")]
     [SerializeField, Min(0f)] private float sprintSpeed = 7.5f;
-
-    [Tooltip("Aceleración y frenado horizontal (m/s²).")]
     [SerializeField, Min(0f)] private float acceleration = 25f;
 
-    [Tooltip("Altura del salto (m).")]
+    [Header("Salto")]
     [SerializeField, Min(0f)] private float jumpHeight = 1.1f;
-
-    [Tooltip("Gravedad aplicada al jugador (negativa).")]
     [SerializeField] private float gravity = -22f;
-
-    [Tooltip("Tiempo extra tras abandonar el suelo en el que todavía se permite saltar (s).")]
     [SerializeField, Min(0f)] private float coyoteTime = 0.12f;
-
-    [Tooltip("Tiempo durante el que se recuerda un salto pulsado antes de tocar el suelo (s).")]
     [SerializeField, Min(0f)] private float jumpBufferTime = 0.1f;
 
     [Header("Entrada")]
-    [Tooltip("Tecla para correr.")]
     [SerializeField] private KeyCode sprintKey = KeyCode.LeftShift;
 
     [Header("Vista")]
-    [Tooltip("Sensibilidad del ratón (grados por píxel).")]
     [SerializeField, Min(0.001f)] private float mouseSensitivity = 0.12f;
-
-    [Tooltip("Invertir el eje vertical de la vista.")]
-    [SerializeField] private bool invertY;
-
-    [Tooltip("Límite inferior de la rotación vertical.")]
+    [SerializeField] private bool invertY = false;
     [SerializeField, Range(-89f, 0f)] private float minPitch = -85f;
-
-    [Tooltip("Límite superior de la rotación vertical.")]
     [SerializeField, Range(0f, 89f)] private float maxPitch = 85f;
 
     [Header("Cursor")]
-    [Tooltip("Bloquea el cursor al empezar. Pulsa Esc para liberarlo y haz clic para volver a bloquearlo.")]
     [SerializeField] private bool lockCursorOnStart = true;
 
     private CharacterController controller;
-    private PlayerStamina stamina; // Opcional: si no existe, se puede correr sin límite.
+    private PlayerStamina stamina;
 
     private float jumpBufferCounter;
+    private float coyoteCounter;
 
     private Vector3 horizontalVelocity;
     private float verticalVelocity;
-    private float coyoteCounter;
 
     private float yaw;
     private float pitch;
     private bool cursorLocked;
 
-    /// <summary>Transform usado para la vista en primera persona.</summary>
     public Transform CameraTransform => cameraTransform;
 
     private void Awake()
@@ -80,6 +54,7 @@ public class FirstPersonController : MonoBehaviour
         if (cameraTransform == null)
         {
             Camera childCamera = GetComponentInChildren<Camera>(true);
+
             if (childCamera != null)
                 cameraTransform = childCamera.transform;
         }
@@ -87,8 +62,9 @@ public class FirstPersonController : MonoBehaviour
         if (cameraTransform == null)
         {
             Debug.LogError(
-                "FirstPersonController: no se encontró ninguna cámara. Añade una cámara como hija del jugador o asigna 'Camera Transform'.",
-                this);
+                "FirstPersonController: No se encontró la cámara.",
+                this
+            );
         }
 
         yaw = transform.eulerAngles.y;
@@ -96,8 +72,10 @@ public class FirstPersonController : MonoBehaviour
         if (cameraTransform != null)
         {
             pitch = cameraTransform.localEulerAngles.x;
+
             if (pitch > 180f)
                 pitch -= 360f;
+
             pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
         }
     }
@@ -139,88 +117,128 @@ public class FirstPersonController : MonoBehaviour
     private void SetCursorLocked(bool locked)
     {
         cursorLocked = locked;
-        Cursor.lockState = locked ? CursorLockMode.Locked : CursorLockMode.None;
+
+        Cursor.lockState = locked
+            ? CursorLockMode.Locked
+            : CursorLockMode.None;
+
         Cursor.visible = !locked;
     }
 
     private void ApplyLook()
     {
-        // Con el cursor liberado no se gira la vista.
         if (lockCursorOnStart && !cursorLocked)
             return;
 
-        // GetAxisRaw devuelve el desplazamiento del ratón en píxeles desde el último frame.
         float lookX = Input.GetAxisRaw("Mouse X");
         float lookY = Input.GetAxisRaw("Mouse Y");
 
-        if (Mathf.Approximately(lookX, 0f) && Mathf.Approximately(lookY, 0f))
+        if (Mathf.Approximately(lookX, 0f) &&
+            Mathf.Approximately(lookY, 0f))
             return;
 
-        float yawDelta = lookX * mouseSensitivity;
+        yaw += lookX * mouseSensitivity;
+
         float pitchDelta = lookY * mouseSensitivity;
 
-        yaw += yawDelta;
         pitch += invertY ? pitchDelta : -pitchDelta;
         pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
 
         transform.rotation = Quaternion.Euler(0f, yaw, 0f);
 
         if (cameraTransform != null)
-            cameraTransform.localRotation = Quaternion.Euler(pitch, 0f, 0f);
+        {
+            cameraTransform.localRotation =
+                Quaternion.Euler(pitch, 0f, 0f);
+        }
     }
 
     private void ApplyMovement()
     {
+        float dt = Time.deltaTime;
+
         bool grounded = controller.isGrounded;
 
-        Vector2 move = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
-        if (move.sqrMagnitude < 0.01f) // Zona muerta.
+        Vector2 move = new Vector2(
+            Input.GetAxisRaw("Horizontal"),
+            Input.GetAxisRaw("Vertical")
+        );
+
+        if (move.sqrMagnitude < 0.01f)
             move = Vector2.zero;
 
-        Vector3 wishDirection = transform.right * move.x + transform.forward * move.y;
+        Vector3 wishDirection =
+            transform.right * move.x +
+            transform.forward * move.y;
+
         if (wishDirection.sqrMagnitude > 1f)
             wishDirection.Normalize();
 
-        // Solo cuenta como correr si el jugador se mueve y le queda estamina.
-        bool sprinting = Input.GetKey(sprintKey) && move != Vector2.zero;
+        // Intención de correr, sin bloquearla por falta de estamina.
+        bool sprinting =
+            Input.GetKey(sprintKey) &&
+            move != Vector2.zero;
+
         if (stamina != null)
         {
-            sprinting &= stamina.CanSprint;
-            stamina.Tick(sprinting, Time.deltaTime);
+            stamina.Tick(sprinting, dt);
         }
 
-        float speed = sprinting ? sprintSpeed : walkSpeed;
+        // La velocidad disminuye progresivamente cuando hay fatiga.
+        float speed = walkSpeed;
+
+        if (sprinting)
+        {
+            float multiplier = stamina != null
+                ? stamina.SprintSpeedMultiplier
+                : 1f;
+
+            speed = sprintSpeed * multiplier;
+        }
+
         Vector3 targetVelocity = wishDirection * speed;
 
         horizontalVelocity = Vector3.MoveTowards(
-            horizontalVelocity, targetVelocity, acceleration * Time.deltaTime);
+            horizontalVelocity,
+            targetVelocity,
+            acceleration * dt
+        );
 
+        // Gravedad y suelo.
         if (grounded)
         {
             coyoteCounter = coyoteTime;
+
             if (verticalVelocity < 0f)
-                verticalVelocity = -2f; // Mantiene al CharacterController pegado al suelo.
+                verticalVelocity = -2f;
         }
         else
         {
-            coyoteCounter -= Time.deltaTime;
+            coyoteCounter -= dt;
         }
 
+        // Salto con buffer.
         if (Input.GetButtonDown("Jump"))
             jumpBufferCounter = jumpBufferTime;
         else
-            jumpBufferCounter -= Time.deltaTime;
+            jumpBufferCounter -= dt;
 
         if (jumpBufferCounter > 0f && coyoteCounter > 0f)
         {
-            verticalVelocity = Mathf.Sqrt(2f * jumpHeight * -gravity);
+            verticalVelocity = Mathf.Sqrt(
+                2f * jumpHeight * -gravity
+            );
+
             jumpBufferCounter = 0f;
             coyoteCounter = 0f;
         }
 
-        verticalVelocity += gravity * Time.deltaTime;
+        verticalVelocity += gravity * dt;
 
-        Vector3 motion = horizontalVelocity + Vector3.up * verticalVelocity;
-        controller.Move(motion * Time.deltaTime);
+        Vector3 motion =
+            horizontalVelocity +
+            Vector3.up * verticalVelocity;
+
+        controller.Move(motion * dt);
     }
 }
