@@ -15,10 +15,10 @@ public class StaminaBloodEffect : MonoBehaviour
 {
     [Header("Aspecto")]
     [Tooltip("Color más oscuro de la sangre.")]
-    [SerializeField] private Color darkBlood = new Color(0.40f, 0.00f, 0.02f, 1f);
+    [SerializeField] private Color darkBlood = new Color(0.70f, 0.00f, 0.02f, 1f);
 
     [Tooltip("Color más claro de la sangre. Cada mancha toma un color entre los dos.")]
-    [SerializeField] private Color lightBlood = new Color(0.70f, 0.03f, 0.05f, 1f);
+    [SerializeField] private Color lightBlood = new Color(1.00f, 0.05f, 0.05f, 1f);
 
     [Tooltip("Tamaño mínimo de cada mancha (m).")]
     [SerializeField, Min(0.01f)] private float minSize = 0.12f;
