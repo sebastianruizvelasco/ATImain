@@ -86,6 +86,21 @@ public class StaminaBloodEffect : MonoBehaviour
 
         blood.Emit(burstCount);
         SetContinuousEmission(true);
+        Debug.Log($"StaminaBloodEffect: estamina agotada, {burstCount} manchas creadas en {blood.transform.position}.", this);
+    }
+
+    /// <summary>Lanza una ráfaga de sangre sin agotar la estamina (clic derecho en el componente, en Play).</summary>
+    [ContextMenu("Probar sangre")]
+    private void TestBlood()
+    {
+        if (blood == null)
+        {
+            Debug.LogWarning("StaminaBloodEffect: entra en Play para probar la sangre.", this);
+            return;
+        }
+
+        blood.Emit(burstCount);
+        Debug.Log($"StaminaBloodEffect: prueba, {burstCount} manchas en {blood.transform.position}. Vivas: {blood.particleCount}.", this);
     }
 
     private void OnRecovered()
@@ -163,6 +178,9 @@ public class StaminaBloodEffect : MonoBehaviour
         Shader shader = Shader.Find("Sprites/Default");
         if (shader == null)
             shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+
+        if (shader == null)
+            Debug.LogError("StaminaBloodEffect: no se encontró ningún shader para las manchas.", this);
 
         stainTexture = CreateStainTexture(64);
         material = new Material(shader)
