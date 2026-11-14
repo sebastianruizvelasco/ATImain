@@ -1,16 +1,15 @@
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
-using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 
 /// <summary>
 /// Asistente de editor para montar un jugador en primera persona en la escena actual:
-/// CharacterController + FirstPersonController + PlayerInput y una cámara hija.
+/// CharacterController + FirstPersonController y una cámara hija.
+/// El controlador usa el Input Manager antiguo, por lo que no hace falta PlayerInput.
 /// </summary>
 public static class FirstPersonSetup
 {
-    private const string ActionsAssetPath = "Assets/InputSystem_Actions.inputactions";
     private const string MaterialsFolder = "Assets/Materials";
     private const string GroundMaterialPath = "Assets/Materials/Suelo.mat";
     private const string ObstacleMaterialPath = "Assets/Materials/Obstaculos.mat";
@@ -101,25 +100,6 @@ public static class FirstPersonSetup
         {
             cameraProperty.objectReferenceValue = camera.transform;
             controllerSerialized.ApplyModifiedPropertiesWithoutUndo();
-        }
-
-        // --- PlayerInput con el asset de acciones del proyecto ---
-        var playerInput = player.AddComponent<PlayerInput>();
-        var actions = AssetDatabase.LoadAssetAtPath<InputActionAsset>(ActionsAssetPath);
-        if (actions != null)
-        {
-            var inputSerialized = new SerializedObject(playerInput);
-            inputSerialized.FindProperty("m_Actions").objectReferenceValue = actions;
-            inputSerialized.FindProperty("m_DefaultActionMap").stringValue = "Player";
-            inputSerialized.FindProperty("m_NotificationBehavior").enumValueIndex =
-                (int)PlayerNotifications.SendMessages;
-            inputSerialized.ApplyModifiedPropertiesWithoutUndo();
-        }
-        else
-        {
-            Debug.LogWarning(
-                $"FirstPersonSetup: no se encontró {ActionsAssetPath}. Asigna manualmente el asset de acciones al PlayerInput.",
-                playerInput);
         }
 
         // --- Suelo y obstáculos de prueba ---
