@@ -173,7 +173,7 @@ public class StaminaBloodEffect : MonoBehaviour
         return material;
     }
 
-    /// <summary>Mancha redonda de borde bastante definido, con un pequeño degradado en el filo.</summary>
+    /// <summary>Mancha redonda totalmente opaca, con solo un filo muy fino suavizado.</summary>
     private static Texture2D CreateStainTexture(int size)
     {
         var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
@@ -190,7 +190,7 @@ public class StaminaBloodEffect : MonoBehaviour
             for (int x = 0; x < size; x++)
             {
                 float distance = Mathf.Sqrt((x - center) * (x - center) + (y - center) * (y - center)) / center;
-                float alpha = 1f - Mathf.SmoothStep(0.65f, 1f, Mathf.Clamp01(distance));
+                float alpha = 1f - Mathf.SmoothStep(0.88f, 1f, Mathf.Clamp01(distance));
                 pixels[y * size + x] = new Color32(255, 255, 255, (byte)(alpha * 255f));
             }
         }
