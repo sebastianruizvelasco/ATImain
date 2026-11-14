@@ -31,7 +31,18 @@ public class StaminaBloodEffect : MonoBehaviour
     [SerializeField, Min(0.05f)] private float radius = 0.35f;
 
     [Header("Posicion")]
+    [Tooltip("Altura sobre la superficie (m), para evitar que la mancha parpadee con el suelo.")]
     [SerializeField] private float heightOffset = 0.03f;
+
+    [Header("Superficie")]
+    [Tooltip("Capas sobre las que se pega la sangre. Por defecto, todas.")]
+    [SerializeField] private LayerMask surfaceMask = ~0;
+
+    [Tooltip("Distancia maxima (m) hacia abajo en la que se busca una superficie.")]
+    [SerializeField, Min(0.5f)] private float maxSurfaceDistance = 100f;
+
+    [Tooltip("Inclinacion minima de la superficie (0 = pared, 1 = suelo plano).")]
+    [SerializeField, Range(0f, 1f)] private float minSurfaceUp = 0.5f;
 
     [Header("Rendimiento")]
     [SerializeField, Min(1)] private int maxStains = 400;
@@ -45,6 +56,10 @@ public class StaminaBloodEffect : MonoBehaviour
 
     private Material bloodMaterial;
     private Texture2D stainTexture;
+
+    private bool emitting;
+    private float emitAccumulator;
+    private readonly RaycastHit[] hitBuffer = new RaycastHit[8];
 
     private void Awake()
     {
@@ -82,6 +97,20 @@ public class StaminaBloodEffect : MonoBehaviour
             velocity.sqrMagnitude > 0.04f;
 
         SetContinuousEmission(shouldEmit);
+
+        if (!emitting)
+            return;
+
+        // Las manchas las coloca el script sobre la superficie que haya debajo,
+        // asi que tambien se crean si el jugador esta en el aire.
+        emitAccumulator += exhaustedRate * Time.deltaTime;
+        int count = Mathf.FloorToInt(emitAccumulator);
+
+        if (count > 0)
+        {
+            emitAccumulator -= count;
+            EmitStains(count);
+        }
     }
 
     private void LateUpdate()
@@ -121,7 +150,7 @@ public class StaminaBloodEffect : MonoBehaviour
             return;
 
         // Pequeña ráfaga inicial.
-        blood.Emit(burstCount);
+        EmitStains(burstCount);
     }
 
     private void OnRecovered()
@@ -131,11 +160,75 @@ public class StaminaBloodEffect : MonoBehaviour
 
     private void SetContinuousEmission(bool enabled)
     {
-        if (blood == null)
-            return;
+        emitting = enabled;
 
-        var emission = blood.emission;
-        emission.enabled = enabled;
+        if (!enabled)
+            emitAccumulator = 0f;
+    }
+
+    /// <summary>
+    /// Crea manchas alrededor del jugador. Cada una se coloca sobre la superficie solida
+    /// que haya justo debajo de su posicion (suelo, cajas, plataformas...), aunque el jugador salte.
+    /// </summary>
+    private int EmitStains(int count)
+    {
+        int created = 0;
+
+        for (int i = 0; i < count; i++)
+        {
+            Vector2 circle = Random.insideUnitCircle * radius;
+            Vector3 origin = transform.position + new Vector3(circle.x, 0.5f, circle.y);
+
+            if (!TryFindSurface(origin, out Vector3 point))
+                continue;
+
+            var emit = new ParticleSystem.EmitParams
+            {
+                position = point + Vector3.up * heightOffset,
+                velocity = Vector3.zero,
+                startSize = Random.Range(minSize, maxSize),
+                startLifetime = lifetime,
+                startColor = Color.Lerp(darkBlood, lightBlood, Random.value),
+                rotation = Random.Range(0f, 360f)
+            };
+
+            blood.Emit(emit, 1);
+            created++;
+        }
+
+        return created;
+    }
+
+    /// <summary>Busca hacia abajo la superficie solida mas cercana, ignorando al propio jugador.</summary>
+    private bool TryFindSurface(Vector3 origin, out Vector3 point)
+    {
+        point = default;
+
+        int hits = Physics.RaycastNonAlloc(
+            origin, Vector3.down, hitBuffer, maxSurfaceDistance + 0.5f, surfaceMask, QueryTriggerInteraction.Ignore);
+
+        float best = float.MaxValue;
+        bool found = false;
+
+        for (int i = 0; i < hits; i++)
+        {
+            RaycastHit hit = hitBuffer[i];
+
+            if (hit.collider.transform.IsChildOf(transform))
+                continue;
+
+            if (hit.normal.y < minSurfaceUp)
+                continue;
+
+            if (hit.distance < best)
+            {
+                best = hit.distance;
+                point = hit.point;
+                found = true;
+            }
+        }
+
+        return found;
     }
 
     private void BuildParticleSystem()
@@ -176,18 +269,12 @@ public class StaminaBloodEffect : MonoBehaviour
         // SHAPE
         var shape = blood.shape;
 
-        shape.enabled = true;
-        shape.shapeType = ParticleSystemShapeType.Circle;
-        shape.radius = radius;
-        shape.radiusThickness = 1f;
-
-        // Círculo acostado en el plano XZ.
-        shape.rotation = new Vector3(90f, 0f, 0f);
+        // La posicion de cada mancha la calcula el script (raycast hacia abajo).
+        shape.enabled = false;
 
         // EMISSION
         var emission = blood.emission;
 
-        emission.rateOverTime = exhaustedRate;
         emission.enabled = false;
 
         // COLOR OVER LIFETIME
