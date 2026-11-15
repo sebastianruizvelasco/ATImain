@@ -58,28 +58,32 @@ public class PhysicalDoor : MonoBehaviour
         }
     }
 
-    private void SetupHingeDoor()
+    
+private void SetupHingeDoor()
+{
+    if (hingeJoint == null)
+        hingeJoint = GetComponent<HingeJoint>();
+
+    if (hingeJoint == null)
     {
-        if (hingeJoint == null)
-            hingeJoint = GetComponent<HingeJoint>();
-
-        if (hingeJoint == null)
-        {
-            Debug.LogError("PhysicalDoor: Falta HingeJoint.", this);
-            enabled = false;
-            return;
-        }
-
-        hingeJoint.useMotor = false;
-        hingeJoint.useSpring = false;
-
-        // La puerta comienza físicamente bloqueada.
-        JointLimits limits = hingeJoint.limits;
-        limits.min = 0f;
-        limits.max = 0f;
-        hingeJoint.limits = limits;
-        hingeJoint.useLimits = true;
+        Debug.LogError("PhysicalDoor: Falta HingeJoint.", this);
+        enabled = false;
+        return;
     }
+
+    hingeJoint.connectedBody = null;
+    hingeJoint.useMotor = false;
+    hingeJoint.useSpring = false;
+
+    // Bloquea inicialmente la puerta.
+    hingeJoint.useLimits = true;
+
+    JointLimits limits = hingeJoint.limits;
+    limits.min = 0f;
+    limits.max = 0f;
+    hingeJoint.limits = limits;
+}
+
 
     private void SetupSlidingDoor()
     {
@@ -129,38 +133,36 @@ public class PhysicalDoor : MonoBehaviour
         slidingJoint.linearLimit = limit;
     }
 
-    public void TryUnlock(InteractionInventory inventory)
+    
+public void TryUnlock(InteractionInventory inventory)
+{
+    if (isUnlocked)
+        return;
+
+    if (requiresKey &&
+        (inventory == null || !inventory.HasBuildingKey))
     {
-        if (isUnlocked)
-        {
-            Debug.Log("Esta puerta ya está desbloqueada.");
-            return;
-        }
-
-        if (requiresKey &&
-            (inventory == null || !inventory.HasBuildingKey))
-        {
-            Debug.Log("Necesitas una llave para abrir esta puerta.");
-            return;
-        }
-
-        isUnlocked = true;
-
-        if (doorType == DoorType.Hinge)
-        {
-            // Ahora puede girar libremente.
-            hingeJoint.useLimits = false;
-        }
-        else
-        {
-            // Ahora puede deslizarse físicamente.
-            SoftJointLimit limit = slidingJoint.linearLimit;
-            limit.limit = slidingDistance;
-            slidingJoint.linearLimit = limit;
-        }
-
-        Debug.Log("Puerta desbloqueada. Ahora puedes moverla.");
+        Debug.Log("Necesitas una llave.");
+        return;
     }
 
+    isUnlocked = true;
+
+    if (doorType == DoorType.Hinge)
+    {
+        hingeJoint.useLimits = false;
+    }
+    else
+    {
+        SoftJointLimit limit = slidingJoint.linearLimit;
+        limit.limit = slidingDistance;
+        slidingJoint.linearLimit = limit;
+    }
+
+    Debug.Log("Puerta desbloqueada.");
+}
+
+
+      
     public bool IsUnlocked => isUnlocked;
 }
