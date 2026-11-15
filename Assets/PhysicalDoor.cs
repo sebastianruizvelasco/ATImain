@@ -1,4 +1,3 @@
-
 using UnityEngine;
 
 [RequireComponent(typeof(Rigidbody))]
@@ -19,6 +18,9 @@ public class PhysicalDoor : MonoBehaviour
     [Header("Física")]
     [SerializeField] private Rigidbody doorRigidbody;
     [SerializeField] private float unlockedMass = 15f;
+
+    [Header("Capas que ignora")]
+    [SerializeField] private LayerMask ignoredLayers;
 
     [Header("Puerta con bisagra")]
     [SerializeField] private HingeJoint hingeJoint;
@@ -44,47 +46,64 @@ public class PhysicalDoor : MonoBehaviour
 
         doorRigidbody.isKinematic = false;
         doorRigidbody.mass = unlockedMass;
-        doorRigidbody.interpolation = RigidbodyInterpolation.Interpolate;
+        doorRigidbody.interpolation =
+            RigidbodyInterpolation.Interpolate;
+
         doorRigidbody.collisionDetectionMode =
             CollisionDetectionMode.Continuous;
 
+        IgnoreSelectedLayers();
+
         if (doorType == DoorType.Hinge)
-        {
             SetupHingeDoor();
-        }
         else
-        {
             SetupSlidingDoor();
+    }
+
+    // IGNORAR COLISIONES POR LAYER
+    private void IgnoreSelectedLayers()
+    {
+        int doorLayer = gameObject.layer;
+
+        for (int i = 0; i < 32; i++)
+        {
+            if ((ignoredLayers.value & (1 << i)) != 0)
+            {
+                Physics.IgnoreLayerCollision(
+                    doorLayer,
+                    i,
+                    true
+                );
+            }
         }
     }
 
-    
-private void SetupHingeDoor()
-{
-    if (hingeJoint == null)
-        hingeJoint = GetComponent<HingeJoint>();
-
-    if (hingeJoint == null)
+    // CONFIGURACIÓN BISAGRA
+    private void SetupHingeDoor()
     {
-        Debug.LogError("PhysicalDoor: Falta HingeJoint.", this);
-        enabled = false;
-        return;
+        if (hingeJoint == null)
+            hingeJoint = GetComponent<HingeJoint>();
+
+        if (hingeJoint == null)
+        {
+            Debug.LogError("PhysicalDoor: Falta HingeJoint.", this);
+            enabled = false;
+            return;
+        }
+
+        hingeJoint.connectedBody = null;
+        hingeJoint.useMotor = false;
+        hingeJoint.useSpring = false;
+
+        JointLimits limits = hingeJoint.limits;
+        limits.min = 0f;
+        limits.max = 0f;
+
+        hingeJoint.limits = limits;
+        hingeJoint.useLimits = true;
     }
 
-    hingeJoint.connectedBody = null;
-    hingeJoint.useMotor = false;
-    hingeJoint.useSpring = false;
-
-    // Bloquea inicialmente la puerta.
-    hingeJoint.useLimits = true;
-
-    JointLimits limits = hingeJoint.limits;
-    limits.min = 0f;
-    limits.max = 0f;
-    hingeJoint.limits = limits;
-}
-
-
+    // CONFIGURACIÓN CORREDIZA
     private void SetupSlidingDoor()
     {
         if (slidingJoint == null)
@@ -92,7 +111,10 @@ private void SetupHingeDoor()
 
         if (slidingJoint == null)
         {
-            Debug.LogError("PhysicalDoor: Falta ConfigurableJoint.", this);
+            Debug.LogError(
+                "PhysicalDoor: Falta ConfigurableJoint.",
+                this
+            );
             enabled = false;
             return;
         }
@@ -105,64 +127,67 @@ private void SetupHingeDoor()
         slidingJoint.autoConfigureConnectedAnchor = false;
         slidingJoint.connectedBody = null;
 
-        // El punto de conexión queda fijado en el lugar inicial.
         slidingJoint.connectedAnchor =
             transform.TransformPoint(slidingJoint.anchor);
 
         slidingJoint.axis = axis;
 
         Vector3 secondary = Vector3.up;
+
         if (Mathf.Abs(Vector3.Dot(axis, secondary)) > 0.95f)
             secondary = Vector3.forward;
 
         slidingJoint.secondaryAxis =
             Vector3.Cross(axis, secondary).normalized;
 
-        // Solo permitimos movimiento en el eje X del joint.
         slidingJoint.xMotion = ConfigurableJointMotion.Limited;
         slidingJoint.yMotion = ConfigurableJointMotion.Locked;
         slidingJoint.zMotion = ConfigurableJointMotion.Locked;
 
-        slidingJoint.angularXMotion = ConfigurableJointMotion.Locked;
-        slidingJoint.angularYMotion = ConfigurableJointMotion.Locked;
-        slidingJoint.angularZMotion = ConfigurableJointMotion.Locked;
+        slidingJoint.angularXMotion =
+            ConfigurableJointMotion.Locked;
 
-        // Al principio el desplazamiento permitido es cero.
+        slidingJoint.angularYMotion =
+            ConfigurableJointMotion.Locked;
+
+        slidingJoint.angularZMotion =
+            ConfigurableJointMotion.Locked;
+
         SoftJointLimit limit = slidingJoint.linearLimit;
         limit.limit = 0f;
+
         slidingJoint.linearLimit = limit;
     }
 
-    
-public void TryUnlock(InteractionInventory inventory)
-{
-    if (isUnlocked)
-        return;
-
-    if (requiresKey &&
-        (inventory == null || !inventory.HasBuildingKey))
+    // DESBLOQUEAR PUERTA
+    public void TryUnlock(InteractionInventory inventory)
     {
-        Debug.Log("Necesitas una llave.");
-        return;
+        if (isUnlocked)
+            return;
+
+        if (requiresKey &&
+            (inventory == null || !inventory.HasBuildingKey))
+        {
+            Debug.Log("Necesitas una llave para abrir esta puerta.");
+            return;
+        }
+
+        isUnlocked = true;
+
+        if (doorType == DoorType.Hinge)
+        {
+            hingeJoint.useLimits = false;
+        }
+        else
+        {
+            SoftJointLimit limit = slidingJoint.linearLimit;
+            limit.limit = slidingDistance;
+
+            slidingJoint.linearLimit = limit;
+        }
+
+        Debug.Log("Puerta desbloqueada. Ahora puedes moverla.");
     }
 
-    isUnlocked = true;
-
-    if (doorType == DoorType.Hinge)
-    {
-        hingeJoint.useLimits = false;
-    }
-    else
-    {
-        SoftJointLimit limit = slidingJoint.linearLimit;
-        limit.limit = slidingDistance;
-        slidingJoint.linearLimit = limit;
-    }
-
-    Debug.Log("Puerta desbloqueada.");
-}
-
-
-      
     public bool IsUnlocked => isUnlocked;
 }
