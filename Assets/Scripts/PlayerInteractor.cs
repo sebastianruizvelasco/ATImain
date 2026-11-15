@@ -11,15 +11,14 @@ public class PlayerInteractor : MonoBehaviour
     [SerializeField] private float interactionDistance = 3f;
     [SerializeField] private LayerMask interactionLayers = ~0;
 
-    [Header("Debug Gizmos")]
+    [Header("Debug")]
+    [SerializeField] private bool showDebugLogs = true;
     [SerializeField] private bool showRaycast = true;
     [SerializeField] private Color idleColor = Color.green;
     [SerializeField] private Color hitColor = Color.red;
 
     private InteractableObject currentTarget;
 
-    private Vector3 rayOrigin;
-    private Vector3 rayDirection;
     private Vector3 hitPoint;
     private bool hasHit;
 
@@ -39,10 +38,10 @@ public class PlayerInteractor : MonoBehaviour
         currentTarget = null;
         hasHit = false;
 
-        rayOrigin = playerCamera.transform.position;
-        rayDirection = playerCamera.transform.forward;
-
-        Ray ray = new Ray(rayOrigin, rayDirection);
+        Ray ray = new Ray(
+            playerCamera.transform.position,
+            playerCamera.transform.forward
+        );
 
         RaycastHit[] hits = Physics.RaycastAll(
             ray,
@@ -62,6 +61,9 @@ public class PlayerInteractor : MonoBehaviour
             hasHit = true;
             hitPoint = hit.point;
 
+            if (showDebugLogs)
+                Debug.DrawLine(ray.origin, hit.point, Color.yellow);
+
             InteractableObject candidate =
                 hit.collider.GetComponentInParent<InteractableObject>();
 
@@ -69,6 +71,10 @@ public class PlayerInteractor : MonoBehaviour
                 continue;
 
             currentTarget = candidate;
+
+            if (showDebugLogs)
+                Debug.Log("Objeto detectado: " + candidate.name);
+
             break;
         }
 
@@ -81,7 +87,15 @@ public class PlayerInteractor : MonoBehaviour
     private void TryInteract()
     {
         if (currentTarget == null)
+        {
+            if (showDebugLogs)
+                Debug.Log("No hay objeto interactuable delante.");
+
             return;
+        }
+
+        if (showDebugLogs)
+            Debug.Log("Intentando interactuar con: " + currentTarget.name);
 
         InteractionContext context = new InteractionContext(
             manager,
@@ -97,7 +111,9 @@ public class PlayerInteractor : MonoBehaviour
     public void ClearTarget()
     {
         currentTarget = null;
-        manager.HidePrompt();
+
+        if (manager != null)
+            manager.HidePrompt();
     }
 
     private void OnDrawGizmos()

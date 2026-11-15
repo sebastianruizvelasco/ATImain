@@ -1,3 +1,4 @@
+
 using UnityEngine;
 
 [RequireComponent(typeof(Rigidbody))]
@@ -19,7 +20,7 @@ public class PhysicalDoor : MonoBehaviour
     [SerializeField] private Rigidbody doorRigidbody;
     [SerializeField] private float unlockedMass = 15f;
 
-    [Header("Capas que ignora")]
+    [Header("Capas que esta puerta ignora")]
     [SerializeField] private LayerMask ignoredLayers;
 
     [Header("Puerta con bisagra")]
@@ -31,6 +32,9 @@ public class PhysicalDoor : MonoBehaviour
     [SerializeField] private float slidingDistance = 1.5f;
 
     private bool isUnlocked;
+
+    private Collider[] doorColliders;
+    private Collider[] ignoredColliders;
 
     private void Awake()
     {
@@ -52,7 +56,7 @@ public class PhysicalDoor : MonoBehaviour
         doorRigidbody.collisionDetectionMode =
             CollisionDetectionMode.Continuous;
 
-        IgnoreSelectedLayers();
+        SetupIgnoredCollisions();
 
         if (doorType == DoorType.Hinge)
             SetupHingeDoor();
@@ -60,20 +64,34 @@ public class PhysicalDoor : MonoBehaviour
             SetupSlidingDoor();
     }
 
-    // IGNORAR COLISIONES POR LAYER
-    private void IgnoreSelectedLayers()
+    // Ignora colisiones solamente para esta puerta.
+    private void SetupIgnoredCollisions()
     {
-        int doorLayer = gameObject.layer;
+        doorColliders = GetComponentsInChildren<Collider>();
 
-        for (int i = 0; i < 32; i++)
+        Collider[] allColliders =
+            FindObjectsByType<Collider>(
+                FindObjectsSortMode.None
+            );
+
+        foreach (Collider other in allColliders)
         {
-            if ((ignoredLayers.value & (1 << i)) != 0)
+            if (other == null || other.transform.IsChildOf(transform))
+                continue;
+
+            if ((ignoredLayers.value & (1 << other.gameObject.layer)) == 0)
+                continue;
+
+            foreach (Collider doorCollider in doorColliders)
             {
-                Physics.IgnoreLayerCollision(
-                    doorLayer,
-                    i,
-                    true
-                );
+                if (doorCollider != null)
+                {
+                    Physics.IgnoreCollision(
+                        doorCollider,
+                        other,
+                        true
+                    );
+                }
             }
         }
     }
@@ -182,7 +200,6 @@ public class PhysicalDoor : MonoBehaviour
         {
             SoftJointLimit limit = slidingJoint.linearLimit;
             limit.limit = slidingDistance;
-
             slidingJoint.linearLimit = limit;
         }
 
