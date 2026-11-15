@@ -1,3 +1,4 @@
+
 using UnityEngine;
 
 [CreateAssetMenu(
@@ -7,12 +8,15 @@ public class OpenDoorAction : InteractionAction
 {
     public override void Execute(InteractionContext context)
     {
-        LockedDoor door =
-            context.Target.GetComponentInParent<LockedDoor>();
+        PhysicalDoor door =
+            context.Target.GetComponentInParent<PhysicalDoor>();
 
         if (door == null)
+        {
+            Debug.LogWarning("No se encontró PhysicalDoor.");
             return;
+        }
 
-        door.TryOpen(context.Manager.inventory);
+        door.Toggle(context.Manager.inventory);
     }
 }
