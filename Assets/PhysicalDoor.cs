@@ -1,7 +1,8 @@
 
+
+using System.Collections;
 using UnityEngine;
 
-[RequireComponent(typeof(Rigidbody))]
 public class PhysicalDoor : MonoBehaviour
 {
     public enum DoorType
@@ -13,198 +14,149 @@ public class PhysicalDoor : MonoBehaviour
     [Header("Tipo de puerta")]
     [SerializeField] private DoorType doorType;
 
+    [Header("Configuración general")]
+    [SerializeField] private float movementSpeed = 2f;
+    [SerializeField] private bool startsOpen;
+
     [Header("Cerradura")]
     [SerializeField] private bool requiresKey;
 
-    [Header("Física")]
-    [SerializeField] private Rigidbody doorRigidbody;
-    [SerializeField] private float unlockedMass = 15f;
+    [Header("Puerta de bisagra")]
+    [SerializeField] private Transform doorPivot;
+    [SerializeField] private float openAngle = 90f;
+    [SerializeField] private bool invertDirection;
 
-    [Header("Capas que esta puerta ignora")]
-    [SerializeField] private LayerMask ignoredLayers;
+    [Header("Puerta lateral")]
+    [SerializeField] private Vector3 slidingDirection = Vector3.right;
+    [SerializeField] private float slidingDistance = 2f;
 
-    [Header("Puerta con bisagra")]
-    [SerializeField] private HingeJoint hingeJoint;
+    private Vector3 closedPosition;
+    private Vector3 openPosition;
 
-    [Header("Puerta corrediza")]
-    [SerializeField] private ConfigurableJoint slidingJoint;
-    [SerializeField] private Vector3 slidingAxisLocal = Vector3.right;
-    [SerializeField] private float slidingDistance = 1.5f;
+    private Quaternion closedRotation;
+    private Quaternion openRotation;
 
-    private bool isUnlocked;
+    private bool isOpen;
+    private bool isMoving;
 
-    private Collider[] doorColliders;
-    private Collider[] ignoredColliders;
+    private Coroutine movementCoroutine;
 
     private void Awake()
     {
-        if (doorRigidbody == null)
-            doorRigidbody = GetComponent<Rigidbody>();
-
-        if (doorRigidbody == null)
-        {
-            Debug.LogError("PhysicalDoor: Falta Rigidbody.", this);
-            enabled = false;
-            return;
-        }
-
-        doorRigidbody.isKinematic = false;
-        doorRigidbody.mass = unlockedMass;
-        doorRigidbody.interpolation =
-            RigidbodyInterpolation.Interpolate;
-
-        doorRigidbody.collisionDetectionMode =
-            CollisionDetectionMode.Continuous;
-
-        SetupIgnoredCollisions();
-
         if (doorType == DoorType.Hinge)
-            SetupHingeDoor();
-        else
-            SetupSlidingDoor();
-    }
-
-    // Ignora colisiones solamente para esta puerta.
-    private void SetupIgnoredCollisions()
-    {
-        doorColliders = GetComponentsInChildren<Collider>();
-
-        Collider[] allColliders =
-            FindObjectsByType<Collider>(
-                FindObjectsSortMode.None
-            );
-
-        foreach (Collider other in allColliders)
         {
-            if (other == null || other.transform.IsChildOf(transform))
-                continue;
-
-            if ((ignoredLayers.value & (1 << other.gameObject.layer)) == 0)
-                continue;
-
-            foreach (Collider doorCollider in doorColliders)
+            if (doorPivot == null)
             {
-                if (doorCollider != null)
-                {
-                    Physics.IgnoreCollision(
-                        doorCollider,
-                        other,
-                        true
-                    );
-                }
+                Debug.LogError(
+                    "PhysicalDoor: Falta asignar DoorPivot.", this);
+                enabled = false;
+                return;
+            }
+
+            closedRotation = doorPivot.localRotation;
+
+            float angle = invertDirection ? -openAngle : openAngle;
+
+            openRotation = closedRotation *
+                Quaternion.Euler(0f, angle, 0f);
+        }
+        else
+        {
+            closedPosition = transform.localPosition;
+
+            openPosition = closedPosition +
+                transform.parent.TransformDirection(slidingDirection.normalized)
+                * slidingDistance;
+
+            if (transform.parent == null)
+            {
+                openPosition = closedPosition +
+                    slidingDirection.normalized * slidingDistance;
             }
         }
+
+        isOpen = startsOpen;
+
+        ApplyPosition();
     }
 
-    // CONFIGURACIÓN BISAGRA
-    private void SetupHingeDoor()
+    public void Toggle(InteractionInventory inventory)
     {
-        if (hingeJoint == null)
-            hingeJoint = GetComponent<HingeJoint>();
-
-        if (hingeJoint == null)
-        {
-            Debug.LogError("PhysicalDoor: Falta HingeJoint.", this);
-            enabled = false;
-            return;
-        }
-
-        hingeJoint.connectedBody = null;
-        hingeJoint.useMotor = false;
-        hingeJoint.useSpring = false;
-
-        JointLimits limits = hingeJoint.limits;
-        limits.min = 0f;
-        limits.max = 0f;
-
-        hingeJoint.limits = limits;
-        hingeJoint.useLimits = true;
-    }
-
-    // CONFIGURACIÓN CORREDIZA
-    private void SetupSlidingDoor()
-    {
-        if (slidingJoint == null)
-            slidingJoint = GetComponent<ConfigurableJoint>();
-
-        if (slidingJoint == null)
-        {
-            Debug.LogError(
-                "PhysicalDoor: Falta ConfigurableJoint.",
-                this
-            );
-            enabled = false;
-            return;
-        }
-
-        Vector3 axis = slidingAxisLocal.normalized;
-
-        if (axis.sqrMagnitude < 0.001f)
-            axis = Vector3.right;
-
-        slidingJoint.autoConfigureConnectedAnchor = false;
-        slidingJoint.connectedBody = null;
-
-        slidingJoint.connectedAnchor =
-            transform.TransformPoint(slidingJoint.anchor);
-
-        slidingJoint.axis = axis;
-
-        Vector3 secondary = Vector3.up;
-
-        if (Mathf.Abs(Vector3.Dot(axis, secondary)) > 0.95f)
-            secondary = Vector3.forward;
-
-        slidingJoint.secondaryAxis =
-            Vector3.Cross(axis, secondary).normalized;
-
-        slidingJoint.xMotion = ConfigurableJointMotion.Limited;
-        slidingJoint.yMotion = ConfigurableJointMotion.Locked;
-        slidingJoint.zMotion = ConfigurableJointMotion.Locked;
-
-        slidingJoint.angularXMotion =
-            ConfigurableJointMotion.Locked;
-
-        slidingJoint.angularYMotion =
-            ConfigurableJointMotion.Locked;
-
-        slidingJoint.angularZMotion =
-            ConfigurableJointMotion.Locked;
-
-        SoftJointLimit limit = slidingJoint.linearLimit;
-        limit.limit = 0f;
-
-        slidingJoint.linearLimit = limit;
-    }
-
-    // DESBLOQUEAR PUERTA
-    public void TryUnlock(InteractionInventory inventory)
-    {
-        if (isUnlocked)
+        if (isMoving)
             return;
 
         if (requiresKey &&
             (inventory == null || !inventory.HasBuildingKey))
         {
-            Debug.Log("Necesitas una llave para abrir esta puerta.");
+            Debug.Log("La puerta está cerrada con llave.");
             return;
         }
 
-        isUnlocked = true;
+        isOpen = !isOpen;
+
+        if (movementCoroutine != null)
+            StopCoroutine(movementCoroutine);
+
+        movementCoroutine = StartCoroutine(MoveDoor());
+    }
+
+    private IEnumerator MoveDoor()
+    {
+        isMoving = true;
 
         if (doorType == DoorType.Hinge)
         {
-            hingeJoint.useLimits = false;
+            Quaternion target = isOpen ? openRotation : closedRotation;
+
+            while (Quaternion.Angle(doorPivot.localRotation, target) > 0.1f)
+            {
+                doorPivot.localRotation = Quaternion.RotateTowards(
+                    doorPivot.localRotation,
+                    target,
+                    movementSpeed * 90f * Time.deltaTime
+                );
+
+                yield return null;
+            }
+
+            doorPivot.localRotation = target;
         }
         else
         {
-            SoftJointLimit limit = slidingJoint.linearLimit;
-            limit.limit = slidingDistance;
-            slidingJoint.linearLimit = limit;
+            Vector3 target = isOpen ? openPosition : closedPosition;
+
+            while (Vector3.Distance(transform.localPosition, target) > 0.001f)
+            {
+                transform.localPosition = Vector3.MoveTowards(
+                    transform.localPosition,
+                    target,
+                    movementSpeed * Time.deltaTime
+                );
+
+                yield return null;
+            }
+
+            transform.localPosition = target;
         }
 
-        Debug.Log("Puerta desbloqueada. Ahora puedes moverla.");
+        isMoving = false;
+        movementCoroutine = null;
     }
 
-    public bool IsUnlocked => isUnlocked;
+    private void ApplyPosition()
+    {
+        if (doorType == DoorType.Hinge)
+        {
+            doorPivot.localRotation =
+                isOpen ? openRotation : closedRotation;
+        }
+        else
+        {
+            transform.localPosition =
+                isOpen ? openPosition : closedPosition;
+        }
+    }
+
+    public bool IsOpen => isOpen;
+    public bool IsMoving => isMoving;
 }
